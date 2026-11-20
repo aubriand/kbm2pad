@@ -1,0 +1,45 @@
+{
+  "_note": "Disposition type GTA (manette PS), clavier AZERTY : lettres = ce qui est imprime sur la touche.",
+  "target_exe": ["veyra.exe"],
+  "toggle_key": "f8",
+  "layer_key": "v",
+  "passthrough": ["lwin", "rwin", "f11"],
+  "walk_scale": 0.45,
+  "mouse": {
+    "full_speed": 2500,
+    "curve": 0.8,
+    "anti_deadzone": 0.2,
+    "smooth_ms": 20,
+    "sens_x": 1.0,
+    "sens_y": 1.0,
+    "invert_y": false
+  },
+  "binds": {
+    "z": "ls_up", "s": "ls_down", "q": "ls_left", "d": "ls_right",
+    "lctrl": "walk",
+    "lshift": "cross",
+    "space": "square",
+    "f": "triangle",
+    "r": "circle",
+    "a": "r1",
+    "tab": "l1",
+    "c": "l3",
+    "mouse_left": "r2",
+    "mouse_right": "l2",
+    "mouse_middle": "r3",
+    "m": "touchpad",
+    "esc": "options",
+    "backspace": "share",
+    "up": "up", "down": "down", "left": "left", "right": "right",
+    "i": "rs_up", "k": "rs_down", "j": "rs_left", "l": "rs_right"
+  },
+  "layers": {
+    "vehicule": {
+      "z": "r2",
+      "s": "l2",
+      "space": "r1",
+      "mouse_left": "l1",
+      "h": "l3"
+    }
+  }
+}
