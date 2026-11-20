@@ -44,6 +44,16 @@ dans la console, sans créer de manette (attention : la souris est capturée par
 Pour voir la vraie manette virtuelle, lance `--any-window` sans `--dry-run`, puis un testeur de
 manette dans le navigateur (ou `joy.cpl`).
 
+**Premier test, à faire dans l'ordre :**
+1. `--dry-run --any-window` sans toucher la souris : RS doit afficher `[0, 0]`.
+2. Dans le testeur de manette : Z fait monter le stick gauche, la souris va dans le bon sens.
+   Si l'axe vertical est inversé, mets `invert_y` à true.
+3. Dans le journal de Veyra, la ligne `remoteplay-input device opened … name=` doit nommer la manette PS4 virtuelle.
+4. Dans GTA, M ouvre la carte : ça prouve que le pavé tactile arrive jusqu'à la PS5.
+
+Si `capture ON` n'apparaît jamais, regarde la ligne `premier plan : xxx.exe` dans la console
+et mets ce nom dans `target_exe`.
+
 ## Profil (`profiles/gta.json`)
 
 - `binds` : touche → cible. Cibles possibles : `cross circle square triangle l1 r1 l2 r2 l3 r3
