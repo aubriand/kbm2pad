@@ -32,6 +32,49 @@ assert math.hypot(*pad_state({"l"}, base, (0.9, 0.9), 0.5)[4]) <= 1 + 1e-9
 # conversions DS4
 assert (stick_byte(-1), stick_byte(0), stick_byte(1)) == (1, 128, 255)
 assert dpad_dir({"up", "right"}) == "NORTHEAST" and dpad_dir({"up", "down"}) == "NONE"
+# hooks simulés (sans Windows) : avale / laisse passer
+import types
+from kbm2pad import Bridge
+
+
+class Swallowed(Exception):
+    pass
+
+
+def raise_swallowed():
+    raise Swallowed
+
+
+br = Bridge(profile, True, True)
+br.kb = br.ms = types.SimpleNamespace(suppress_event=raise_swallowed)
+
+
+def key(vk, down):
+    try:
+        br.kb_filter(0x100 if down else 0x101, types.SimpleNamespace(vkCode=vk, flags=0))
+        return "pass"
+    except Swallowed:
+        return "swallow"
+
+
+def click(down):
+    try:
+        br.ms_filter(0x201 if down else 0x202, types.SimpleNamespace(pt=None, mouseData=0, flags=0))
+        return "pass"
+    except Swallowed:
+        return "swallow"
+
+
+assert click(True) == "pass"          # clic qui active Veyra : capture pas encore ON
+br.capturing = True
+assert click(False) == "pass"         # son relâchement doit passer, sinon clic bloqué dans Windows
+assert key(0x5A, True) == "swallow" and "z" in br.held
+assert key(0x7A, True) == "pass"      # F11 en passthrough
+assert key(0x77, True) == "pass" and not br.enabled  # F8 jamais avalé
+br.capturing = False                  # pause pendant que Z est tenu
+assert key(0x5A, False) == "swallow" and "z" not in br.held  # relâchement d'un appui avalé
+assert key(0x5A, False) == "pass"
+
 # profil invalide refusé
 try:
     validate({"binds": {"w": "saut"}})

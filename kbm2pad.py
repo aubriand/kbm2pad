@@ -135,6 +135,7 @@ class Bridge:
         self.capturing = False
         self.held = set()
         self.raw_down = set()  # anti auto-répétition du clavier
+        self.swallowed = set()  # appuis avalés dont il faut aussi avaler le relâchement
         self.pulses = {}  # molette : touche -> fin de l'appui
         self.lock = threading.Lock()
         self.acc = [0, 0]
@@ -158,20 +159,29 @@ class Bridge:
                 self.enabled = not self.enabled
                 print("kbm2pad", "ACTIF" if self.enabled else "en pause")
             return False  # jamais avalée, sinon impossible de reprendre la main
+        if vk == self.layer_vk and first and self.capturing:
+            self.layer = (self.layer + 1) % len(self.layers)
+            self.binds = layer_binds(self.p, self.layers[self.layer])
+            print("couche :", self.layers[self.layer])
+        return self.button(NAME_BY_VK.get(vk, vk), down, self.kb, vk in self.passthrough)
+
+    def button(self, name, down, listener, passthrough=False):
+        """Appui/relâche. On n'avale un relâchement que si on a avalé son appui :
+        sinon Windows croit la touche encore enfoncée (ex. clic qui active Veyra)."""
+        if not down:
+            with self.lock:
+                self.held.discard(name)
+            if name in self.swallowed:
+                self.swallowed.discard(name)
+                listener.suppress_event()
+            return False
         if not self.capturing:
             return False
-        if vk == self.layer_vk:
-            if first:
-                self.layer = (self.layer + 1) % len(self.layers)
-                self.binds = layer_binds(self.p, self.layers[self.layer])
-                print("couche :", self.layers[self.layer])
-        else:
-            name = NAME_BY_VK.get(vk)
-            if name:
-                with self.lock:
-                    (self.held.add if down else self.held.discard)(name)
-        if vk not in self.passthrough:
-            self.kb.suppress_event()
+        with self.lock:
+            self.held.add(name)
+        if not passthrough:
+            self.swallowed.add(name)
+            listener.suppress_event()
         return False
 
     MOUSE_BTN = {0x201: ("mouse_left", True), 0x202: ("mouse_left", False),
@@ -179,20 +189,19 @@ class Bridge:
                  0x207: ("mouse_middle", True), 0x208: ("mouse_middle", False)}
 
     def ms_filter(self, msg, data):
-        if data.flags & 0x01 or not self.capturing:  # LLMHF_INJECTED
+        if data.flags & 0x01:  # LLMHF_INJECTED
+            return False
+        if msg in self.MOUSE_BTN:
+            return self.button(*self.MOUSE_BTN[msg], self.ms)
+        if msg in (0x20B, 0x20C):  # boutons latéraux X1/X2
+            name = "mouse_x1" if (data.mouseData >> 16) == 1 else "mouse_x2"
+            return self.button(name, msg == 0x20B, self.ms)
+        if not self.capturing:
             return False
         if msg == 0x200:  # WM_MOUSEMOVE : le curseur reste figé, pt = ancre + delta
             with self.lock:
                 self.acc[0] += data.pt.x - self.anchor[0]
                 self.acc[1] += data.pt.y - self.anchor[1]
-        elif msg in self.MOUSE_BTN:
-            name, down = self.MOUSE_BTN[msg]
-            with self.lock:
-                (self.held.add if down else self.held.discard)(name)
-        elif msg in (0x20B, 0x20C):  # boutons latéraux X1/X2
-            name = "mouse_x1" if (data.mouseData >> 16) == 1 else "mouse_x2"
-            with self.lock:
-                (self.held.add if msg == 0x20B else self.held.discard)(name)
         elif msg == 0x20A:  # molette : un appui bref
             delta = (data.mouseData >> 16) & 0xFFFF
             name = "wheel_down" if delta & 0x8000 else "wheel_up"
@@ -247,6 +256,13 @@ class Bridge:
         return mouse_to_stick(sx, sy, span, m["full_speed"], m.get("curve", 1.0), m.get("anti_deadzone", 0.0))
 
     def run(self, rate):
+        import ctypes
+        # Sans ça, à 125-150 % d'échelle, SetCursorPos (logique) et pt du hook (physique)
+        # divergent et le stick droit reste penché.
+        try:
+            ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # PER_MONITOR_AWARE_V2
+        except (AttributeError, OSError):
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
         from pynput import keyboard, mouse
         pad = None
         if not self.dry_run:
@@ -264,12 +280,16 @@ class Bridge:
         self.kb.start()
         self.ms.start()
         print(f"kbm2pad prêt. {self.p.get('toggle_key', 'f8').upper()} = pause/reprise, Ctrl+C dans cette console = quitter.")
-        last, next_fg, dt = None, 0.0, 1 / rate
+        last, last_exe, next_fg, dt = None, None, 0.0, 1 / rate
         try:
             while True:
                 now = time.perf_counter()
                 if now >= next_fg:
-                    self.fg_ok = self.any_window or self.foreground_exe() in self.targets
+                    exe = self.foreground_exe()
+                    if exe != last_exe:
+                        print("premier plan :", exe or "?")
+                        last_exe = exe
+                    self.fg_ok = self.any_window or exe in self.targets
                     next_fg = now + 0.1
                 self.set_capture(self.enabled and self.fg_ok)
                 with self.lock:
